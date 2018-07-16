@@ -7,12 +7,11 @@ from copy import deepcopy
 
 from utils import calculate_perplexity, get_ptb_dataset, Vocab
 from utils import ptb_iterator, sample
+from q2_initialization import xavier_weight_init
 
 import tensorflow as tf
-# from tensorflow.python.ops.seq2seq import sequence_loss
-from model import LanguageModel
-from q2_initialization import xavier_weight_init
 from  tensorflow.contrib.seq2seq import  sequence_loss
+from model import LanguageModel
 
 
 # Let's set the parameters of our model
@@ -82,18 +81,9 @@ class RNNLM_Model(LanguageModel):
         (Don't change the variable names)
         """
         ### YOUR CODE HERE
-        self.input_placeholder = tf.placeholder(  ##64*100
-            dtype=tf.int32,
-            shape=(None, self.config.num_steps),
-            name="input")
-
-        self.labels_placeholder = tf.placeholder(  ##64*5
-            dtype=tf.float32,
-            shape=(None, self.config.num_steps),
-            name="labels")
-
-        self.dropout_placeholder = tf.placeholder(tf.float32, name="dropout")
-        # raise NotImplementedError
+        self.input_placeholder = tf.placeholder(tf.int32, shape=(None, self.config.num_steps), name='input')
+        self.labels_placeholder = tf.placeholder(tf.int32, shape=(None, self.config.num_steps), name='labels')
+        self.dropout_placeholder = tf.placeholder(tf.float32, shape=(), name='dropout')
         ### END YOUR CODE
 
     def add_embedding(self):
@@ -122,10 +112,8 @@ class RNNLM_Model(LanguageModel):
                 inputs = []
                 for i in range(len(input_wvs)):
                     inputs.append(tf.squeeze(input_wvs[i], squeeze_dims=[1]))
-                    ### END YOUR CODE
-            return inputs
-            # raise NotImplementedError
             ### END YOUR CODE
+            return inputs
 
     def add_projection(self, rnn_outputs):
         """Adds a projection layer.
@@ -154,7 +142,6 @@ class RNNLM_Model(LanguageModel):
         outputs = []
         for rnn_out in rnn_outputs:
             outputs.append(tf.matmul(rnn_out, U) + b2)
-        # raise NotImplementedError
         ### END YOUR CODE
         return outputs
 
@@ -169,18 +156,27 @@ class RNNLM_Model(LanguageModel):
           loss: A 0-d tensor (scalar)
         """
         ### YOUR CODE HERE
+        logits = output
+        e = tf.expand_dims(input=output, axis=0)
+        print(e)
+        targets = self.labels_placeholder
+        f = tf.expand_dims(input=tf.reshape(targets, [-1]), axis=0)
+        print(targets)
+        weights = tf.ones((self.config.batch_size * self.config.num_steps))
+        print(weights)
+        g = tf.expand_dims(input=weights, axis=0)
+        loss = sequence_loss(e, f, g)
         # all_ones = [tf.ones([self.config.batch_size * self.config.num_steps])]
+        # a = tf.reshape(self.labels_placeholder, [-1])
+        # b = tf.ones((self.config.batch_size * self.config.num_steps))
+        # d = [output]
+        # c = sequence_loss(logits=output, targets=[a], weights=b)
         # cross_entropy = sequence_loss(
         #     [output], [tf.reshape(self.labels_placeholder, [-1])], all_ones, len(self.vocab))
         # tf.add_to_collection('total_loss', cross_entropy)
         # loss = tf.add_n(tf.get_collection('total_loss'))
-        # raise NotImplementedError
         ### END YOUR CODE
-        return sequence_loss([output],
-                         [tf.reshape(
-                             self.labels_placeholder,
-                             [self.config.batch_size * self.config.num_steps, -1])],
-                         [tf.constant(1.0)])
+        return loss
 
     def add_training_op(self, loss):
         """Sets up the training Ops.
@@ -202,11 +198,9 @@ class RNNLM_Model(LanguageModel):
           train_op: The Op for training.
         """
         ### YOUR CODE HERE
-        # opt = tf.train.AdamOptimizer(learning_rate=self.config.lr)
-        # train_op = opt.minimize(loss=loss)
-        # raise NotImplementedError
+        train_op = tf.train.AdamOptimizer(self.config.lr).minimize(loss)
         ### END YOUR CODE
-        return tf.train.AdamOptimizer(self.config.lr).minimize(loss)
+        return train_op
 
     def __init__(self, config):
         self.config = config
@@ -222,7 +216,7 @@ class RNNLM_Model(LanguageModel):
         self.predictions = [tf.nn.softmax(tf.cast(o, 'float64')) for o in self.outputs]
         # Reshape the output into len(vocab) sized chunks - the -1 says as many as
         # needed to evenly divide
-        output = tf.reshape(tf.concat( self.outputs, 1), [-1, len(self.vocab)])
+        output = tf.reshape(tf.concat(self.outputs,1), [-1, len(self.vocab)])
         self.calculate_loss = self.add_loss_op(output)
         self.train_step = self.add_training_op(self.calculate_loss)
 
@@ -284,7 +278,6 @@ class RNNLM_Model(LanguageModel):
 
         with tf.variable_scope('hiddendropout'):
             rnn_outputs = [tf.nn.dropout(x, self.dropout_placeholder) for x in rnn_outputs]
-        # raise NotImplementedError
         ### END YOUR CODE
         return rnn_outputs
 
@@ -348,7 +341,6 @@ def generate_text(session, model, config, starting_text='<eos>',
             model.dropout_placeholder: 1
         }
         state, y_pred = session.run([model.final_state, model.predictions[-1]], feed_dict=feed)
-        # raise NotImplementedError
         ### END YOUR CODE
         next_word_idx = sample(y_pred[0], temperature=temp)
         tokens.append(next_word_idx)
@@ -356,14 +348,6 @@ def generate_text(session, model, config, starting_text='<eos>',
             break
     output = [model.vocab.decode(word_idx) for word_idx in tokens]
     return output
-
-def feed_token(session, model, state, token):
-  state, prediction = session.run(
-      [model.final_state, model.predictions[-1]],
-      feed_dict={model.initial_state: state,
-                 model.input_placeholder: [[token]],
-                 model.dropout_placeholder: 1.0})
-  return state, prediction
 
 
 def generate_sentence(session, model, config, *args, **kwargs):
@@ -381,8 +365,6 @@ def test_RNNLM():
         model = RNNLM_Model(config)
         # This instructs gen_model to reuse the same variables as the model above
         # scope.reuse_variables()
-        # tf.get_variable_scope().reuse_variables()
-
         gen_model = RNNLM_Model(gen_config)
 
     init = tf.initialize_all_variables()
